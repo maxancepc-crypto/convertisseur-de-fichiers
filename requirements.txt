@@ -6,6 +6,9 @@ pymupdf
 pypdf
 pandas
 openpyxl
+odfpy
 python-docx
 markdown
+markdownify
+reportlab
 imageio-ffmpeg

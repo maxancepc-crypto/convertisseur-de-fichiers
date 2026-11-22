@@ -45,6 +45,7 @@
     background: #6366f1; color: #fff; font-weight: 700; font-size: 1.05rem; cursor: pointer;
   }
   #go:disabled { opacity: .5; cursor: not-allowed; }
+  #note { display: none; margin-top: 14px; color: #fbbf24; font-size: .9rem; }
   #msg { display: none; margin-top: 16px; padding: 14px 18px; border-radius: 12px; }
   #msg.err { display: block; background: #2e1f27; border: 1px solid #5b2a33; color: #fca5a5; }
   #msg.ok { display: block; background: #12261b; border: 1px solid #1f5a37; color: #86efac; }
@@ -55,7 +56,7 @@
 <body>
 <main>
   <h1>Convertisseur de fichiers</h1>
-  <p class="sub">Images, PDF, tableaux, documents, audio et vidéo (extraction du son)</p>
+  <p class="sub">Images, PDF, tableaux, documents, audio et vidéo</p>
 
   <div class="card">
     <div id="drop">
@@ -84,6 +85,7 @@
       </div>
     </div>
 
+    <div id="note"></div>
     <button id="go" disabled>Convertir</button>
     <div id="msg"></div>
   </div>
@@ -135,9 +137,18 @@
       if ([...sel.options].some(o => o.value === previous)) sel.value = previous;
     }
     const t = sel.value;
-    $("widthBox").hidden = !(cat === "image" || (cat === "pdf" && t !== "txt"));
-    $("qualityBox").hidden = !(cat === "image" || cat === "audio" || cat === "video" || (cat === "pdf" && t !== "txt"));
+    const pdfImg = cat === "pdf" && ["png", "jpg", "webp", "tiff", "bmp", "gif"].includes(t);
+    const vidOut = cat === "video" && ["mp4", "webm", "gif"].includes(t);
+    $("widthBox").hidden = !(cat === "image" || pdfImg || vidOut);
+    $("qualityBox").hidden = !(cat === "image" || cat === "audio" || cat === "video" || pdfImg);
     $("mergeBox").hidden = !(cat === "image" && t === "pdf");
+    let note = "";
+    if (vidOut) note = "Vidéo limitée à 60 secondes (10 secondes pour un GIF). La conversion peut être longue sur l'hébergement gratuit.";
+    else if (cat === "video") note = "Seul le son de la vidéo est extrait.";
+    else if (cat === "pdf" && ["txt", "html", "md", "docx"].includes(t)) note = "Seul le texte du PDF est converti, pas la mise en page. Un PDF scanné (sans texte) ne fonctionnera pas.";
+    else if (cat === "document" && t === "pdf") note = "Les caractères hors alphabet latin (chinois, russe, émojis…) ne s'affichent pas dans le PDF.";
+    $("note").textContent = note;
+    $("note").style.display = note ? "block" : "none";
     $("go").disabled = !files.length;
   }
 
