@@ -1,3 +1,11 @@
 flask
 gunicorn
 pillow
+pillow-heif
+pymupdf
+pypdf
+pandas
+openpyxl
+python-docx
+markdown
+imageio-ffmpeg

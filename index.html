@@ -21,6 +21,7 @@
   }
   #drop.over { border-color: #6366f1; background: #1c1e2e; color: #fff; }
   #drop strong { color: #a5b4fc; }
+  #types { display: block; margin-top: 10px; font-size: .85rem; line-height: 1.6; }
   #list { list-style: none; padding: 0; margin: 16px 0 0; }
   #list li {
     display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 8px;
@@ -28,17 +29,16 @@
   }
   #list .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #list .size { color: #6b7280; font-size: .85rem; }
-  #list button {
-    background: none; border: 0; color: #f87171; font-size: 1.1rem; cursor: pointer; padding: 0 4px;
-  }
+  #list button { background: none; border: 0; color: #f87171; font-size: 1.1rem; cursor: pointer; padding: 0 4px; }
   .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; }
+  .opts > div[hidden] { display: none; }
   label { display: block; font-size: .9rem; color: #d1d5db; margin-bottom: 6px; }
   select, input[type=number] {
     width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #2a2d3a;
     background: #0f0f14; color: #fff; font-size: 1rem;
   }
   input[type=range] { width: 100%; accent-color: #6366f1; }
-  .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: #d1d5db; }
+  .check { display: flex; align-items: center; gap: 8px; color: #d1d5db; margin: 0; }
   .check input { width: 18px; height: 18px; accent-color: #6366f1; }
   #go {
     width: 100%; margin-top: 22px; padding: 16px; border: 0; border-radius: 12px;
@@ -55,36 +55,31 @@
 <body>
 <main>
   <h1>Convertisseur de fichiers</h1>
-  <p class="sub">Convertis, compresse et redimensionne tes images, ou assemble-les en PDF</p>
+  <p class="sub">Images, PDF, tableaux, documents, audio et vidéo (extraction du son)</p>
 
   <div class="card">
     <div id="drop">
-      Glisse tes images ici ou <strong>clique pour les choisir</strong><br>
-      <small>JPG, PNG, WEBP, GIF, BMP, TIFF — 20 fichiers et 25 Mo maximum</small>
+      Glisse tes fichiers ici ou <strong>clique pour les choisir</strong>
+      <small id="types">Chargement des formats…</small>
     </div>
-    <input id="file" type="file" accept="image/*" multiple hidden>
+    <input id="file" type="file" multiple hidden>
     <ul id="list"></ul>
 
     <div class="opts">
       <div>
         <label for="format">Convertir en</label>
-        <select id="format">
-          <option value="jpg">JPG</option>
-          <option value="png">PNG</option>
-          <option value="webp">WEBP</option>
-          <option value="pdf">PDF</option>
-        </select>
+        <select id="format" disabled><option>Ajoute d'abord un fichier</option></select>
       </div>
-      <div>
+      <div id="widthBox" hidden>
         <label for="width">Largeur maximale en pixels (facultatif)</label>
         <input id="width" type="number" min="16" max="10000" placeholder="ex. 1280">
       </div>
-      <div>
+      <div id="qualityBox" hidden>
         <label for="quality">Qualité : <span id="qv">85</span></label>
         <input id="quality" type="range" min="10" max="100" value="85">
       </div>
-      <div id="mergeBox" style="display:none">
-        <label class="check" style="margin-top:28px"><input id="merge" type="checkbox" checked>
+      <div id="mergeBox" hidden>
+        <label class="check" style="margin-top:30px"><input id="merge" type="checkbox" checked>
         Assembler toutes les images dans un seul PDF</label>
       </div>
     </div>
@@ -92,45 +87,96 @@
     <button id="go" disabled>Convertir</button>
     <div id="msg"></div>
   </div>
-  <footer>Tes fichiers sont traités en mémoire et ne sont pas conservés sur le serveur.</footer>
+  <footer>Tes fichiers sont traités en mémoire et ne sont pas conservés sur le serveur. 20 fichiers et 50 Mo maximum par envoi.</footer>
 </main>
 
 <script>
   const $ = (id) => document.getElementById(id);
+  const LABELS = { image: "Images", pdf: "PDF", table: "Tableaux", document: "Documents", audio: "Audio", video: "Vidéo" };
+  let caps = null;
   let files = [];
 
-  function fmt(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " Mo" : Math.max(1, Math.round(n / 1024)) + " Ko"; }
+  function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " Mo" : Math.max(1, Math.round(n / 1024)) + " Ko"; }
+  function extOf(name) { const i = name.lastIndexOf("."); return i < 0 ? "" : name.slice(i + 1).toLowerCase(); }
+  function categoryOf(name) {
+    if (!caps) return null;
+    const e = extOf(name);
+    for (const [cat, list] of Object.entries(caps.extensions)) if (list.includes(e)) return cat;
+    return null;
+  }
+  function currentCategory() { return files.length ? categoryOf(files[0].name) : null; }
+  function show(text, cls) { $("msg").textContent = text; $("msg").className = cls; $("msg").style.display = "block"; }
+  function clearMsg() { $("msg").className = ""; $("msg").style.display = "none"; }
+
+  fetch("/capabilities").then(r => r.json()).then(c => {
+    caps = c;
+    const all = Object.values(c.extensions).flat();
+    $("file").accept = all.map(e => "." + e).join(",");
+    $("types").innerHTML = Object.entries(c.extensions)
+      .filter(([cat]) => c.targets[cat])
+      .map(([cat, list]) => "<b>" + LABELS[cat] + "</b> : " + list.join(", ")).join("<br>");
+  }).catch(() => { $("types").textContent = "Impossible de charger la liste des formats."; });
+
+  function updateOptions() {
+    const cat = currentCategory();
+    const sel = $("format");
+    const previous = sel.value;
+    sel.innerHTML = "";
+    if (!cat) {
+      sel.disabled = true;
+      sel.innerHTML = "<option>Ajoute d'abord un fichier</option>";
+    } else {
+      sel.disabled = false;
+      (caps.targets[cat] || []).forEach(t => {
+        const o = document.createElement("option");
+        o.value = t; o.textContent = t.toUpperCase();
+        sel.appendChild(o);
+      });
+      if ([...sel.options].some(o => o.value === previous)) sel.value = previous;
+    }
+    const t = sel.value;
+    $("widthBox").hidden = !(cat === "image" || (cat === "pdf" && t !== "txt"));
+    $("qualityBox").hidden = !(cat === "image" || cat === "audio" || cat === "video" || (cat === "pdf" && t !== "txt"));
+    $("mergeBox").hidden = !(cat === "image" && t === "pdf");
+    $("go").disabled = !files.length;
+  }
 
   function render() {
     $("list").innerHTML = "";
     files.forEach((f, i) => {
       const li = document.createElement("li");
       const name = document.createElement("span"); name.className = "name"; name.textContent = f.name;
-      const size = document.createElement("span"); size.className = "size"; size.textContent = fmt(f.size);
+      const size = document.createElement("span"); size.className = "size"; size.textContent = fmtSize(f.size);
       const del = document.createElement("button"); del.textContent = "✕"; del.title = "Retirer";
       del.onclick = () => { files.splice(i, 1); render(); };
       li.append(name, size, del);
       $("list").appendChild(li);
     });
-    $("go").disabled = files.length === 0;
+    updateOptions();
   }
 
   function addFiles(list) {
-    for (const f of list) if (f.type.startsWith("image/")) files.push(f);
-    $("msg").className = ""; $("msg").style.display = "none";
+    clearMsg();
+    const problems = [];
+    for (const f of list) {
+      const cat = categoryOf(f.name);
+      if (!cat) { problems.push("Format non pris en charge : " + f.name); continue; }
+      const current = currentCategory();
+      if (current && cat !== current) { problems.push("Un seul type de fichiers à la fois : " + f.name + " ignoré"); continue; }
+      files.push(f);
+    }
+    if (problems.length) show(problems.join(" — "), "err");
     render();
   }
 
   $("drop").onclick = () => $("file").click();
-  $("file").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
+  $("file").onchange = (e) => { addFiles([...e.target.files]); e.target.value = ""; };
   ["dragover", "dragenter"].forEach(ev => $("drop").addEventListener(ev, e => { e.preventDefault(); $("drop").classList.add("over"); }));
   ["dragleave", "drop"].forEach(ev => $("drop").addEventListener(ev, e => { e.preventDefault(); $("drop").classList.remove("over"); }));
-  $("drop").addEventListener("drop", e => addFiles(e.dataTransfer.files));
+  $("drop").addEventListener("drop", e => addFiles([...e.dataTransfer.files]));
 
   $("quality").oninput = () => $("qv").textContent = $("quality").value;
-  $("format").onchange = () => $("mergeBox").style.display = $("format").value === "pdf" ? "block" : "none";
-
-  function show(text, cls) { $("msg").textContent = text; $("msg").className = cls; $("msg").style.display = "block"; }
+  $("format").onchange = updateOptions;
 
   $("go").onclick = async () => {
     const fd = new FormData();
@@ -141,6 +187,7 @@
     fd.append("merge", $("merge").checked ? "1" : "0");
 
     $("go").disabled = true; $("go").textContent = "Conversion…";
+    clearMsg();
     try {
       const res = await fetch("/convert", { method: "POST", body: fd });
       if (!res.ok) {
@@ -155,11 +202,11 @@
       a.download = m ? m[1] : "fichier_converti";
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-      show("Terminé : " + (m ? m[1] : "fichier") + " (" + fmt(blob.size) + ")", "ok");
+      show("Terminé : " + (m ? m[1] : "fichier") + " (" + fmtSize(blob.size) + ")", "ok");
     } catch (e) {
       show(e.message, "err");
     } finally {
-      $("go").disabled = files.length === 0; $("go").textContent = "Convertir";
+      $("go").disabled = !files.length; $("go").textContent = "Convertir";
     }
   };
 </script>
